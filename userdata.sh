@@ -1,17 +1,32 @@
 #!/bin/bash
-sudo apt update -y && apt install -y acl
+set -e
 
-sudo adduser --disabled-password --gecos "" adminuser
-echo 'adminuser:Admin123!' | sudo chpasswd
-sudo usermod -aG sudo adminuser
+sudo apt update -y && sudo apt install -y acl openssl
 
-sudo adduser --disabled-password --gecos "" poweruser
+for u in adminuser poweruser; do
+  if id "$u" &>/dev/null; then
+    sudo userdel -r "$u"
+  fi
+done
+sudo rm -f /etc/sudoers.d/poweruser
+
+sudo useradd -m -s /bin/bash adminuser
+
+admin_secret=$(sudo openssl passwd -6 "12345")
+echo "adminuser:${admin_secret}" | sudo chpasswd -e
+
+sudo usermod -U adminuser
+sudo gpasswd -a adminuser sudo >/dev/null
+
+sudo useradd -m -s /bin/bash poweruser
 sudo passwd -d poweruser
 
-echo "poweruser ALL=NOPASSWD: /sbin/iptables" | sudo tee /etc/sudoers.d/poweruser
-sudo chmod 0440 /etc/sudoers.d/poweruser
+sudo install -m 440 /dev/stdin /etc/sudoers.d/poweruser <<'EOF'
+poweruser ALL=(ALL) NOPASSWD: /sbin/iptables
+EOF
 
 sudo chmod 700 /home/adminuser
 sudo setfacl -m u:poweruser:rx /home/adminuser
 
-sudo -u poweruser ln -s /etc/mtab /home/poweruser/mtab_link
+sudo ln -snf /etc/mtab /home/poweruser/mtab
+sudo chown -h poweruser:poweruser /home/poweruser/mtab
